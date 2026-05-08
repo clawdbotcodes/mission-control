@@ -177,21 +177,21 @@ export function getAgentLiveStatuses(): Map<string, {
   status: 'active' | 'idle' | 'offline'
   lastActivity: number
   channel: string
+  sessionKey: string | null
 }> {
   const sessions = getAllGatewaySessions()
   const now = Date.now()
-  const statuses = new Map<string, { status: 'active' | 'idle' | 'offline'; lastActivity: number; channel: string }>()
+  const statuses = new Map<string, { status: 'active' | 'idle' | 'offline'; lastActivity: number; channel: string; sessionKey: string | null }>()
 
   for (const session of sessions) {
     const existing = statuses.get(session.agent)
-    // Keep the most recent session per agent
     if (!existing || session.updatedAt > existing.lastActivity) {
       const age = now - session.updatedAt
       let status: 'active' | 'idle' | 'offline'
       if (age < 5 * 60 * 1000) {
-        status = 'active'       // Active within 5 minutes
+        status = 'active'
       } else if (age < 60 * 60 * 1000) {
-        status = 'idle'         // Active within 1 hour
+        status = 'idle'
       } else {
         status = 'offline'
       }
@@ -199,6 +199,7 @@ export function getAgentLiveStatuses(): Map<string, {
         status,
         lastActivity: session.updatedAt,
         channel: session.channel,
+        sessionKey: session.key,
       })
     }
   }

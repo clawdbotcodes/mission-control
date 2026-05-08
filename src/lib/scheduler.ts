@@ -223,7 +223,7 @@ async function syncAgentLiveStatuses(): Promise<number> {
     id: number; name: string; config: string | null
   }>
 
-  const update = db.prepare('UPDATE agents SET status = ?, last_seen = ?, last_activity = ?, updated_at = ? WHERE id = ?')
+  const update = db.prepare('UPDATE agents SET status = ?, last_seen = ?, last_activity = ?, session_key = ?, updated_at = ? WHERE id = ?')
   let refreshed = 0
 
   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-')
@@ -242,7 +242,7 @@ async function syncAgentLiveStatuses(): Promise<number> {
       }
 
       const candidates = [openclawId, agent.name].filter(Boolean).map(s => normalize(s!))
-      let matched: { status: 'active' | 'idle' | 'offline'; lastActivity: number; channel: string } | undefined
+      let matched: { status: 'active' | 'idle' | 'offline'; lastActivity: number; channel: string; sessionKey: string | null } | undefined
 
       for (const [sessionAgent, info] of liveStatuses) {
         if (candidates.includes(normalize(sessionAgent))) {
@@ -255,7 +255,8 @@ async function syncAgentLiveStatuses(): Promise<number> {
 
       const now = Math.floor(Date.now() / 1000)
       const activity = `Gateway session (${matched.channel || 'unknown'})`
-      update.run(matched.status, now, activity, now, agent.id)
+      const sessionKey = matched.sessionKey || null
+      update.run(matched.status, now, activity, sessionKey, now, agent.id)
       refreshed++
 
       eventBus.broadcast('agent.status_changed', {
