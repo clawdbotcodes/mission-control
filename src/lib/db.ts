@@ -225,7 +225,8 @@ export interface Agent {
   last_activity?: string;
   created_at: number;
   updated_at: number;
-  config?: string; // JSON string
+  config?: string;
+  avatar_url?: string | null;
 }
 
 export interface Comment {

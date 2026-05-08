@@ -100,9 +100,9 @@ function extractRole(content: string): string {
 
 function extractAvatarUrl(content: string): string | null {
   for (const line of content.split('\n')) {
-    const match = line.match(/^\s*[-*]?\s*\*{0,2}Avatar\*{0,2}\s*:\s*(.+)$/i)
+    const match = line.match(/^\s*[-*]?\s*\*{0,2}Avatar[:\*]*\*{0,2}\s*:?\s*(.+)$/i)
     if (match?.[1]) {
-      const val = match[1].replace(/^["']|["']$/g, '').trim()
+      const val = match[1].replace(/^[*"'\s]+|[*"'\s]+$/g, '').trim()
       return val || null
     }
   }
@@ -203,12 +203,15 @@ function scanLocalAgents(): DiskAgent[] {
 
       // Read IDENTITY.md for avatar (separate from soul files)
       let avatarUrl: string | null = null
-      const identityPath = join(fullPath, 'IDENTITY.md')
-      if (existsSync(identityPath)) {
-        try {
-          const identityContent = readFileSync(identityPath, 'utf8')
-          avatarUrl = extractAvatarUrl(identityContent)
-        } catch { /* unreadable */ }
+      for (const identityName of ['IDENTITY.md', 'identity.md']) {
+        const identityPath = join(fullPath, identityName)
+        if (existsSync(identityPath)) {
+          try {
+            const identityContent = readFileSync(identityPath, 'utf8')
+            avatarUrl = extractAvatarUrl(identityContent)
+            if (avatarUrl) break
+          } catch { /* unreadable */ }
+        }
       }
       // Also try extracting from soul content if no dedicated IDENTITY.md
       if (!avatarUrl && soulContent) {

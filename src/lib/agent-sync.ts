@@ -28,6 +28,7 @@ interface OpenClawAgent {
     name?: string
     theme?: string
     emoji?: string
+    avatar?: string
   }
   subagents?: any
   sandbox?: {
@@ -63,12 +64,13 @@ export interface SyncDiff {
   onlyInMC: string[]
 }
 
-function parseIdentityFromFile(content: string): { name?: string; theme?: string; emoji?: string; content?: string } {
+function parseIdentityFromFile(content: string): { name?: string; theme?: string; emoji?: string; avatar?: string; content?: string } {
   if (!content.trim()) return {}
   const lines = content.split('\n').map((line) => line.trim()).filter(Boolean)
   let name: string | undefined
   let theme: string | undefined
   let emoji: string | undefined
+  let avatar: string | undefined
 
   for (const line of lines) {
     if (!name && line.startsWith('#')) {
@@ -88,6 +90,15 @@ function parseIdentityFromFile(content: string): { name?: string; theme?: string
       const emojiMatch = line.match(/^emoji\s*:\s*(.+)$/i)
       if (emojiMatch?.[1]) {
         emoji = emojiMatch[1].trim()
+        continue
+      }
+    }
+
+    if (!avatar) {
+      const avatarMatch = line.match(/^\s*[-*]?\s*\*{0,2}Avatar[:\*]*\*{0,2}\s*:?\s*(.+)$/i)
+      if (avatarMatch?.[1]) {
+        const val = avatarMatch[1].replace(/^[*"'\s]+|[*"'\s]+$/g, '').trim()
+        if (val) avatar = val
       }
     }
   }
@@ -96,6 +107,7 @@ function parseIdentityFromFile(content: string): { name?: string; theme?: string
     ...(name ? { name } : {}),
     ...(theme ? { theme } : {}),
     ...(emoji ? { emoji } : {}),
+    ...(avatar ? { avatar } : {}),
     content: lines.slice(0, 8).join('\n'),
   }
 }
@@ -166,7 +178,7 @@ export function enrichAgentConfigFromWorkspace(configData: any): any {
   const workspace = typeof configData.workspace === 'string' ? configData.workspace : undefined
   if (!workspace) return configData
 
-  const identityFile = readWorkspaceFile(workspace, 'identity.md')
+  const identityFile = readWorkspaceFile(workspace, 'IDENTITY.md') || readWorkspaceFile(workspace, 'identity.md')
   const toolsFile = readWorkspaceFile(workspace, 'TOOLS.md')
 
   const mergedIdentity = {
@@ -202,10 +214,10 @@ function mapAgentToMC(agent: OpenClawAgent): {
   role: string
   config: any
   soul_content: string | null
+  avatar_url: string | null
 } {
   const name = agent.identity?.name || agent.name || agent.id
   const role = agent.identity?.theme || 'agent'
-  // Store the full config minus systemPrompt/soul (which can be large)
   const configData = enrichAgentConfigFromWorkspace({
     openclawId: agent.id,
     model: agent.model,
@@ -219,10 +231,18 @@ function mapAgentToMC(agent: OpenClawAgent): {
     isDefault: agent.default || false,
   })
 
-  // Read soul.md from the agent's workspace if available
   const soul_content = readWorkspaceFile(agent.workspace, 'soul.md')
 
-  return { name, role, config: configData, soul_content }
+  let avatar_url: string | null = agent.identity?.avatar || null
+  if (!avatar_url) {
+    const identityContent = readWorkspaceFile(agent.workspace, 'IDENTITY.md') || readWorkspaceFile(agent.workspace, 'identity.md')
+    if (identityContent) {
+      const parsed = parseIdentityFromFile(identityContent)
+      avatar_url = parsed.avatar || null
+    }
+  }
+
+  return { name, role, config: configData, soul_content, avatar_url }
 }
 
 /** Sync agents from openclaw.json into the MC database */
@@ -244,13 +264,13 @@ export async function syncAgentsFromConfig(actor: string = 'system'): Promise<Sy
   let updated = 0
   const results: SyncResult['agents'] = []
 
-  const findByName = db.prepare('SELECT id, name, role, config, soul_content FROM agents WHERE name = ?')
+  const findByName = db.prepare('SELECT id, name, role, config, soul_content, avatar_url FROM agents WHERE name = ?')
   const insertAgent = db.prepare(`
-    INSERT INTO agents (name, role, soul_content, status, created_at, updated_at, config)
-    VALUES (?, ?, ?, 'offline', ?, ?, ?)
+    INSERT INTO agents (name, role, soul_content, avatar_url, status, created_at, updated_at, config)
+    VALUES (?, ?, ?, ?, 'offline', ?, ?, ?)
   `)
   const updateAgent = db.prepare(`
-    UPDATE agents SET role = ?, config = ?, soul_content = ?, updated_at = ? WHERE name = ?
+    UPDATE agents SET role = ?, config = ?, soul_content = ?, avatar_url = ?, updated_at = ? WHERE name = ?
   `)
 
   db.transaction(() => {
@@ -266,17 +286,17 @@ export async function syncAgentsFromConfig(actor: string = 'system'): Promise<Sy
         const configChanged = existingConfig !== configJson || existing.role !== mapped.role
         const soulChanged = mapped.soul_content !== null && mapped.soul_content !== existingSoul
 
-        if (configChanged || soulChanged) {
-          // Only overwrite soul_content if we read a new value from workspace
+        if (configChanged || soulChanged || mapped.avatar_url !== (existing.avatar_url ?? null)) {
           const soulToWrite = mapped.soul_content ?? existingSoul
-          updateAgent.run(mapped.role, configJson, soulToWrite, now, mapped.name)
+          const avatarToWrite = mapped.avatar_url ?? existing.avatar_url ?? null
+          updateAgent.run(mapped.role, configJson, soulToWrite, avatarToWrite, now, mapped.name)
           results.push({ id: agent.id, name: mapped.name, action: 'updated' })
           updated++
         } else {
           results.push({ id: agent.id, name: mapped.name, action: 'unchanged' })
         }
       } else {
-        insertAgent.run(mapped.name, mapped.role, mapped.soul_content, now, now, configJson)
+        insertAgent.run(mapped.name, mapped.role, mapped.soul_content, mapped.avatar_url, now, now, configJson)
         results.push({ id: agent.id, name: mapped.name, action: 'created' })
         created++
       }
