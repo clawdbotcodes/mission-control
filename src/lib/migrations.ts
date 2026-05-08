@@ -1418,6 +1418,12 @@ const migrations: Migration[] = [
     }
   },
   {
+    id: '051_agent_avatar_url',
+    up(db: Database.Database) {
+      db.exec(`ALTER TABLE agents ADD COLUMN avatar_url TEXT DEFAULT NULL`)
+    }
+  },
+  {
     id: '050_mcp_call_receipt_signing',
     up(db: Database.Database) {
       // Add Ed25519 receipt signing columns to the MCP audit log.
