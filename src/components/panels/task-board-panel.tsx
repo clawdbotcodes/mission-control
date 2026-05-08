@@ -1921,7 +1921,7 @@ function TaskSessionFeed({ sessionId, agentName, isLive }: { sessionId: string; 
 function ClaudeCodeTasksSection() {
   const t = useTranslations('taskBoard')
   const [expanded, setExpanded] = useState(false)
-  const [data, setData] = useState<{ teams: any[]; tasks: any[] }>({ teams: [], tasks: [] })
+  const [data, setData] = useState<{ teams: any[]; tasks: any[]; sessionLabels?: Record<string, string> }>({ teams: [], tasks: [] })
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -1971,7 +1971,7 @@ function ClaudeCodeTasksSection() {
             Object.entries(tasksByTeam).map(([team, tasks]) => (
               <div key={team}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium text-foreground">{team}</span>
+                  <span className="text-sm font-medium text-foreground">{data.sessionLabels?.[team] ?? team}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{t('taskCount', { count: tasks.length })}</span>
                   {data.teams.find(t => t.name === team)?.members?.length > 0 && (
                     <span className="text-[10px] text-muted-foreground">
