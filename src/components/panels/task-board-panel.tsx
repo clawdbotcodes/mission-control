@@ -55,6 +55,7 @@ interface Agent {
   name: string
   role: string
   status: 'offline' | 'idle' | 'busy' | 'error'
+  avatar_url?: string | null
   taskStats?: {
     total: number
     assigned: number
@@ -735,6 +736,10 @@ export function TaskBoardPanel() {
     return agent?.name || sessionKey || 'Unassigned'
   }
 
+  const getAgentAvatarUrl = (sessionKey?: string) => {
+    return agents.find(a => a.name === sessionKey)?.avatar_url ?? null
+  }
+
   if (loading) {
     return (
       <div className="h-full flex flex-col" role="status" aria-live="polite">
@@ -1062,7 +1067,7 @@ export function TaskBoardPanel() {
                     <span className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
                       {task.assigned_to ? (
                         <>
-                          <AgentAvatar name={getAgentName(task.assigned_to)} size="xs" />
+                          <AgentAvatar name={getAgentName(task.assigned_to)} avatarUrl={getAgentAvatarUrl(task.assigned_to)} size="xs" />
                           <span className="truncate max-w-[8rem]">{getAgentName(task.assigned_to)}</span>
                         </>
                       ) : (
@@ -1589,7 +1594,7 @@ function TaskDetailModal({
                     <option key={agent.id} value={agent.name}>{agent.name}</option>
                   ))}
                 </select>
-                {task.assigned_to && <AgentAvatar name={task.assigned_to} size="xs" />}
+                {task.assigned_to && <AgentAvatar name={task.assigned_to} avatarUrl={agents.find(a => a.name === task.assigned_to)?.avatar_url} size="xs" />}
               </div>
 
               {task.status === 'failed' && task.error_message && (

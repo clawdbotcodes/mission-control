@@ -138,6 +138,7 @@ export interface Agent {
   session_key?: string
   soul_content?: string
   working_memory?: string
+  avatar_url?: string | null
   status: 'offline' | 'idle' | 'busy' | 'error'
   last_seen?: number
   last_activity?: string

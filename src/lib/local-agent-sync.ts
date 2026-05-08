@@ -29,6 +29,7 @@ interface DiskAgent {
   soulContent: string | null
   configContent: string | null
   contentHash: string
+  avatarUrl: string | null
 }
 
 interface AgentRow {
@@ -97,6 +98,17 @@ function extractRole(content: string): string {
   return 'agent'
 }
 
+function extractAvatarUrl(content: string): string | null {
+  for (const line of content.split('\n')) {
+    const match = line.match(/^\s*[-*]?\s*\*{0,2}Avatar\*{0,2}\s*:\s*(.+)$/i)
+    if (match?.[1]) {
+      const val = match[1].replace(/^["']|["']$/g, '').trim()
+      return val || null
+    }
+  }
+  return null
+}
+
 function getLocalAgentRoots(): string[] {
   const home = homedir()
   return [
@@ -159,6 +171,7 @@ function scanLocalAgents(): DiskAgent[] {
             soulContent: body.trim() || null,
             configContent: configJson,
             contentHash: sha256(content),
+            avatarUrl: body ? extractAvatarUrl(body) : null,
           })
         } catch { /* unreadable */ }
         continue
@@ -188,6 +201,20 @@ function scanLocalAgents(): DiskAgent[] {
         }
       }
 
+      // Read IDENTITY.md for avatar (separate from soul files)
+      let avatarUrl: string | null = null
+      const identityPath = join(fullPath, 'IDENTITY.md')
+      if (existsSync(identityPath)) {
+        try {
+          const identityContent = readFileSync(identityPath, 'utf8')
+          avatarUrl = extractAvatarUrl(identityContent)
+        } catch { /* unreadable */ }
+      }
+      // Also try extracting from soul content if no dedicated IDENTITY.md
+      if (!avatarUrl && soulContent) {
+        avatarUrl = extractAvatarUrl(soulContent)
+      }
+
       // Read config JSON if present
       let configContent: string | null = null
       for (const f of CONFIG_FILES) {
@@ -200,8 +227,8 @@ function scanLocalAgents(): DiskAgent[] {
         }
       }
 
-      // Build content hash from whatever identity files exist
-      const hashInput = (soulContent || '') + (configContent || '')
+      // Build content hash from whatever identity files exist (include avatarUrl so changes trigger re-sync)
+      const hashInput = (soulContent || '') + (configContent || '') + (avatarUrl || '')
       if (!hashInput) continue
 
       agents.push({
@@ -211,6 +238,7 @@ function scanLocalAgents(): DiskAgent[] {
         soulContent,
         configContent,
         contentHash: sha256(hashInput),
+        avatarUrl,
       })
     }
   }
@@ -248,11 +276,11 @@ export async function syncLocalAgents(): Promise<{ ok: boolean; message: string 
     let removed = 0
 
     const insertStmt = db.prepare(`
-      INSERT INTO agents (name, role, soul_content, status, source, content_hash, workspace_path, config, created_at, updated_at)
-      VALUES (?, ?, ?, 'offline', 'local', ?, ?, ?, ?, ?)
+      INSERT INTO agents (name, role, soul_content, avatar_url, status, source, content_hash, workspace_path, config, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'offline', 'local', ?, ?, ?, ?, ?)
     `)
     const updateStmt = db.prepare(`
-      UPDATE agents SET role = ?, soul_content = ?, content_hash = ?, workspace_path = ?, config = ?, updated_at = ?
+      UPDATE agents SET role = ?, soul_content = ?, avatar_url = ?, content_hash = ?, workspace_path = ?, config = ?, updated_at = ?
       WHERE id = ?
     `)
     const markRemovedStmt = db.prepare(`
@@ -266,10 +294,10 @@ export async function syncLocalAgents(): Promise<{ ok: boolean; message: string 
         const configJson = disk.configContent ? disk.configContent : null
 
         if (!existing) {
-          insertStmt.run(name, disk.role, disk.soulContent, disk.contentHash, disk.dir, configJson, now, now)
+          insertStmt.run(name, disk.role, disk.soulContent, disk.avatarUrl, disk.contentHash, disk.dir, configJson, now, now)
           created++
         } else if (existing.content_hash !== disk.contentHash) {
-          updateStmt.run(disk.role, disk.soulContent, disk.contentHash, disk.dir, configJson, now, existing.id)
+          updateStmt.run(disk.role, disk.soulContent, disk.avatarUrl, disk.contentHash, disk.dir, configJson, now, existing.id)
           updated++
         }
       }

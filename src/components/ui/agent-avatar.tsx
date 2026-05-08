@@ -1,7 +1,10 @@
 'use client'
 
+import { useState } from 'react'
+
 interface AgentAvatarProps {
   name?: string | null
+  avatarUrl?: string | null
   size?: 'xs' | 'sm' | 'md'
   className?: string
 }
@@ -40,10 +43,23 @@ const sizeClasses: Record<NonNullable<AgentAvatarProps['size']>, string> = {
   md: 'w-8 h-8 text-xs',
 }
 
-export function AgentAvatar({ name, size = 'sm', className = '' }: AgentAvatarProps) {
+export function AgentAvatar({ name, avatarUrl, size = 'sm', className = '' }: AgentAvatarProps) {
   const safeName = name ?? ''
   const initials = getInitials(safeName)
   const colors = getAvatarColors(safeName)
+  const [imgError, setImgError] = useState(false)
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={safeName || 'Agent'}
+        title={safeName}
+        onError={() => setImgError(true)}
+        className={`rounded-full object-cover shrink-0 ${sizeClasses[size]} ${className}`}
+      />
+    )
+  }
 
   return (
     <div
