@@ -484,31 +484,45 @@ export function AgentSquadPanelPhase3() {
                       {formatLastSeen(agent.last_seen)}
                     </span>
                     <div className="flex gap-1">
-                      {agent.session_key ? (
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            wakeAgent(agent.name, agent.session_key!)
-                          }}
-                          size="xs"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs text-cyan-300 hover:bg-cyan-500/15 hover:text-cyan-200"
-                          title="Wake agent via session"
-                        >
-                          {t('wake')}
-                        </Button>
+                      {agent.status === 'offline' ? (
+                        agent.session_key ? (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              wakeAgent(agent.name, agent.session_key!)
+                            }}
+                            size="xs"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs text-cyan-300 hover:bg-cyan-500/15 hover:text-cyan-200"
+                            title="Wake agent via session"
+                          >
+                            {t('wake')}
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              updateAgentStatus(agent.name, 'idle', 'Manually activated')
+                            }}
+                            size="xs"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs text-cyan-300 hover:bg-cyan-500/15 hover:text-cyan-200"
+                          >
+                            {t('wake')}
+                          </Button>
+                        )
                       ) : (
                         <Button
                           onClick={(e) => {
                             e.stopPropagation()
-                            updateAgentStatus(agent.name, 'idle', 'Manually activated')
+                            updateAgentStatus(agent.name, 'offline', 'Manually set offline')
                           }}
-                          disabled={agent.status === 'idle'}
                           size="xs"
                           variant="ghost"
-                          className="h-6 px-2 text-xs"
+                          className="h-6 px-2 text-xs text-slate-400 hover:bg-slate-500/15 hover:text-slate-300"
+                          title="Put agent to sleep"
                         >
-                          {t('wake')}
+                          {t('sleep')}
                         </Button>
                       )}
                       <Button
@@ -864,7 +878,7 @@ function AgentDetailModalPhase3({
         <div className="px-5 pt-5 pb-0 border-b border-border">
           <div className="flex justify-between items-center gap-4 mb-4">
             <div className="flex items-center gap-3 min-w-0">
-              <AgentAvatar name={agent.name} size="md" />
+              <AgentAvatar name={agent.name} avatarUrl={agentState.avatar_url} size="md" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold text-foreground leading-tight truncate">{agentState.name}</h3>

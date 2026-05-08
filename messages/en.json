@@ -771,7 +771,6 @@
     "colFailed": "Failed",
     "retryTask": "Retry Task",
     "colDone": "Done",
-    "colFailed": "Failed",
     "recurring": "RECURRING",
     "spawned": "SPAWNED",
     "spawnedFromTask": "Spawned from task #{id}",
@@ -2017,7 +2016,8 @@
     "noAgents": "No agents registered",
     "noAgentsHint": "Sync from config or create your first agent to get started.",
     "wake": "Wake",
-    "spawn": "Spawn"
+    "spawn": "Spawn",
+    "sleep": "Sleep"
   },
   "orchestration": {
     "tabCommand": "Command",
