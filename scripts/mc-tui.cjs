@@ -208,9 +208,10 @@ async function fetchAgentSessions(baseUrl, apiKey, cookie, agentName) {
   return { sessions: matched.length > 0 ? matched : all.slice(0, 10) };
 }
 
-async function fetchTranscript(baseUrl, apiKey, cookie, sessionId, limit) {
+async function fetchTranscript(baseUrl, apiKey, cookie, sessionId, kind, limit) {
+  const transcriptKind = kind || 'claude-code';
   return api(baseUrl, apiKey, cookie, 'GET',
-    `/api/sessions/transcript?kind=claude-code&id=${encodeURIComponent(sessionId)}&limit=${limit}`);
+    `/api/sessions/transcript?kind=${encodeURIComponent(transcriptKind)}&id=${encodeURIComponent(sessionId)}&limit=${limit}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1201,7 +1202,7 @@ async function handleAgentDetailKey(key, render) {
     state.actionMessage = 'Loading chat...';
     state.transcriptScroll = 0;
     render();
-    state.agentTranscript = await fetchTranscript(baseUrl, apiKey, cookie, session.id, 20);
+    state.agentTranscript = await fetchTranscript(baseUrl, apiKey, cookie, session.id, session.kind, 20);
     state.actionMessage = '';
     render();
     return;

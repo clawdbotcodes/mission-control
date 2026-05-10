@@ -69,11 +69,18 @@ export async function GET(request: NextRequest) {
     }
 
     const sessionEntry = sessionsData[sessionKey]
-    if (!sessionEntry?.sessionId) {
+    let sessionId: string | null = sessionEntry?.sessionId || null
+    if (!sessionId) {
+      const latest = findLatestSessionForAgent(stateDir, agentName)
+      if (latest) {
+        sessionId = latest.sessionId
+      }
+    }
+
+    if (!sessionId) {
       return NextResponse.json({ messages: [], source: 'gateway', error: 'Session not found in sessions.json' })
     }
 
-    const sessionId = sessionEntry.sessionId
     const jsonlPath = path.join(stateDir, 'agents', agentName, 'sessions', `${sessionId}.jsonl`)
     if (!existsSync(jsonlPath)) {
       return NextResponse.json({ messages: [], source: 'gateway', error: 'Session JSONL file not found' })
@@ -95,7 +102,33 @@ function extractAgentName(sessionKey: string): string | null {
   if (parts.length >= 2 && parts[0] === 'agent') {
     return parts[1]
   }
+  if (parts.length === 1 && sessionKey.length > 0) {
+    return sessionKey
+  }
   return null
+}
+
+function findLatestSessionForAgent(stateDir: string, agentName: string): { sessionKey: string; sessionId: string } | null {
+  const sessionsFile = path.join(stateDir, 'agents', agentName, 'sessions', 'sessions.json')
+  if (!existsSync(sessionsFile)) return null
+
+  let sessionsData: Record<string, any>
+  try {
+    sessionsData = JSON.parse(readFileSync(sessionsFile, 'utf-8'))
+  } catch {
+    return null
+  }
+
+  let latest: { sessionKey: string; sessionId: string; startTime: number } | null = null
+  for (const [key, entry] of Object.entries(sessionsData)) {
+    if (!entry?.sessionId) continue
+    const start = typeof entry.startTime === 'number' ? entry.startTime : 0
+    if (!latest || start > latest.startTime) {
+      latest = { sessionKey: key, sessionId: entry.sessionId, startTime: start }
+    }
+  }
+
+  return latest ? { sessionKey: latest.sessionKey, sessionId: latest.sessionId } : null
 }
 
 export const dynamic = 'force-dynamic'

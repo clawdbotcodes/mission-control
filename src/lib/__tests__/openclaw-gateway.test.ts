@@ -47,7 +47,7 @@ beforeAll(async () => {
         type: 'res',
         id: frame.id,
         ok: true,
-        result: { ok: true, echo: frame.params, expectFinal: frame.expectFinal === true },
+        result: { ok: true, echo: frame.params },
       }))
     })
   })
@@ -85,12 +85,10 @@ describe('callOpenClawGateway', () => {
       'agent',
       { message: 'hello', deliver: false },
       5000,
-      { expectFinal: true },
     )
 
     expect(result).toEqual({
       ok: true,
-      expectFinal: true,
       echo: {
         message: 'hello',
         deliver: false,
@@ -100,7 +98,6 @@ describe('callOpenClawGateway', () => {
     expect(mocks.requestFrames[0]).toMatchObject({
       type: 'req',
       method: 'agent',
-      expectFinal: true,
       params: {
         message: 'hello',
         deliver: false,

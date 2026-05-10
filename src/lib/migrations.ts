@@ -1424,6 +1424,41 @@ const migrations: Migration[] = [
     }
   },
   {
+    id: '052_backfill_dispatch_session_kind',
+    up(db: Database.Database) {
+      const rows = db.prepare(
+        `SELECT t.id, t.metadata, a.runtime_type
+         FROM tasks t
+         JOIN agents a ON a.name = t.assigned_to AND a.workspace_id = t.workspace_id
+         WHERE t.metadata LIKE '%"dispatch_session_id"%'
+           AND (t.metadata NOT LIKE '%"dispatch_session_kind"%' OR t.metadata IS NULL)`
+      ).all() as Array<{ id: number; metadata: string; runtime_type: string | null }>
+
+      const localKindMap: Record<string, string> = {
+        claude: 'claude-code',
+        codex: 'codex-cli',
+        hermes: 'hermes',
+        opencode: 'opencode',
+      }
+
+      const stmt = db.prepare('UPDATE tasks SET metadata = ? WHERE id = ?')
+      for (const row of rows) {
+        try {
+          const meta = JSON.parse(row.metadata || '{}')
+          const isGatewayDispatch = meta.async_state || meta.target_session || meta.dispatch_run_id
+          if (isGatewayDispatch) {
+            meta.dispatch_session_kind = 'gateway'
+          } else {
+            meta.dispatch_session_kind = localKindMap[row.runtime_type || ''] || 'claude-code'
+          }
+          stmt.run(JSON.stringify(meta), row.id)
+        } catch {
+          // skip malformed metadata
+        }
+      }
+    }
+  },
+  {
     id: '050_mcp_call_receipt_signing',
     up(db: Database.Database) {
       // Add Ed25519 receipt signing columns to the MCP audit log.
