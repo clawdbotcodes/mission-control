@@ -617,6 +617,7 @@ function AgentDetailModalPhase3({
     soul_content: agent.soul_content || '',
     working_memory: agent.working_memory || '',
     model: (() => { const p = (agent as any).config?.model?.primary; return (typeof p === 'string' ? p : p?.primary) || '' })(),
+    runtime_type: (agent as any).runtime_type || '',
   })
   const [workspaceFiles, setWorkspaceFiles] = useState<{ identityMd: string; agentMd: string }>({
     identityMd: '',
@@ -652,6 +653,7 @@ function AgentDetailModalPhase3({
       soul_content: agent.soul_content || '',
       working_memory: (agent as any).working_memory || '',
       model: (() => { const p = (agent as any).config?.model?.primary; return (typeof p === 'string' ? p : p?.primary) || '' })(),
+      runtime_type: (agent as any).runtime_type || '',
     })
   }, [agent])
 
@@ -675,6 +677,7 @@ function AgentDetailModalPhase3({
               role: freshAgent.role || prev.role,
               session_key: freshAgent.session_key || '',
               model: (freshAgent as any).config?.model?.primary || prev.model,
+              runtime_type: (freshAgent as any).runtime_type || prev.runtime_type,
             }))
           }
         }
