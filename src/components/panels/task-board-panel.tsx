@@ -56,6 +56,7 @@ interface Agent {
   role: string
   status: 'offline' | 'idle' | 'busy' | 'error'
   avatar_url?: string | null
+  runtime_type?: string | null
   taskStats?: {
     total: number
     assigned: number
@@ -542,7 +543,7 @@ export function TaskBoardPanel() {
 
     const match = tasks.find((task) => task.id === selectedTaskIdFromUrl)
     if (match) {
-      if (selectedTask?.id !== match.id) {
+      if (!selectedTask || selectedTask.id !== match.id || selectedTask.updated_at !== match.updated_at || selectedTask.status !== match.status || JSON.stringify(selectedTask.metadata) !== JSON.stringify(match.metadata)) {
         setSelectedTask(match)
       }
       return
@@ -1825,6 +1826,7 @@ function TaskDetailModal({
                 sessionId={task.metadata.dispatch_session_id}
                 agentName={task.assigned_to}
                 isLive={task.status === 'in_progress'}
+                transcriptKind={task.metadata?.dispatch_session_kind || runtimeTypeToTranscriptKind(agents.find(a => a.name === task.assigned_to)?.runtime_type)}
               />
             </div>
           )}
@@ -1834,7 +1836,23 @@ function TaskDetailModal({
   )
 }
 
-function TaskSessionFeed({ sessionId, agentName, isLive }: { sessionId: string; agentName?: string; isLive: boolean }) {
+function runtimeTypeToTranscriptKind(runtimeType: string | null | undefined): string {
+  switch (runtimeType) {
+    case 'claude':
+    case 'openclaw':
+      return 'claude-code'
+    case 'codex':
+      return 'codex-cli'
+    case 'hermes':
+      return 'hermes'
+    case 'opencode':
+      return 'opencode'
+    default:
+      return 'claude-code'
+  }
+}
+
+function TaskSessionFeed({ sessionId, agentName, isLive, transcriptKind }: { sessionId: string; agentName?: string; isLive: boolean; transcriptKind?: string }) {
   const t = useTranslations('taskBoard')
   const [messages, setMessages] = useState<SessionTranscriptMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -1842,9 +1860,15 @@ function TaskSessionFeed({ sessionId, agentName, isLive }: { sessionId: string; 
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
 
+  const kind = transcriptKind || 'claude-code'
+  const isGateway = kind === 'gateway'
+
   const fetchTranscript = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sessions/transcript?kind=claude-code&id=${encodeURIComponent(sessionId)}&limit=100`)
+      const url = isGateway
+        ? `/api/sessions/transcript/gateway?key=${encodeURIComponent(sessionId)}&limit=100`
+        : `/api/sessions/transcript?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(sessionId)}&limit=100`
+      const res = await fetch(url)
       if (!res.ok) throw new Error(`Failed to fetch transcript: ${res.status}`)
       const data = await res.json()
       setMessages(data.messages || [])
@@ -1854,7 +1878,7 @@ function TaskSessionFeed({ sessionId, agentName, isLive }: { sessionId: string; 
     } finally {
       setLoading(false)
     }
-  }, [sessionId])
+  }, [isGateway, kind, sessionId])
 
   // Initial fetch
   useEffect(() => { fetchTranscript() }, [fetchTranscript])
