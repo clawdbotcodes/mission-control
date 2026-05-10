@@ -11,6 +11,76 @@ import { syncTaskOutbound } from './github-sync-engine'
 
 const AGENT_DISPATCH_ACCEPT_TIMEOUT_MS = 60_000
 
+function getZaiApiKey(): string | null {
+  return (process.env.ZAI_API_KEY || '').trim() || null
+}
+
+async function summarizeWithAI(fullText: string, taskTitle: string): Promise<string | null> {
+  const apiKey = getZaiApiKey()
+  if (!apiKey) return null
+
+  const prompt = `You are a concise task summarizer. Given the full agent response below for the task "${taskTitle}", write a brief summary (3-5 sentences max, under 300 words) that captures the key findings, actions taken, and results. Do NOT start with "The agent" or "I". Write in a direct, factual style.
+
+Agent response:
+${fullText}`
+
+  try {
+    const res = await fetch('https://api.z.ai/api/coding/paas/v4/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'glm-4.7',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 500,
+      }),
+    })
+
+    if (!res.ok) {
+      logger.warn({ status: res.status }, 'Z.ai summary API returned error')
+      return null
+    }
+
+    const data = await res.json() as {
+      choices?: Array<{ message?: { content?: string } }>
+    }
+    return data.choices?.[0]?.message?.content?.trim() || null
+  } catch (err) {
+    logger.warn({ err }, 'Z.ai summary call failed')
+    return null
+  }
+}
+
+function buildFallbackComment(fullText: string): string {
+  const SUMMARY_LIMIT = 500
+  if (fullText.length <= SUMMARY_LIMIT) {
+    return fullText + '\n\n---\n*Full response available in the Session tab.*'
+  }
+  let summary = fullText.substring(0, SUMMARY_LIMIT)
+  const lastSentence = Math.max(
+    summary.lastIndexOf('. '),
+    summary.lastIndexOf('.\n'),
+    summary.lastIndexOf('!\n'),
+    summary.lastIndexOf('?\n'),
+    summary.lastIndexOf('\n\n'),
+  )
+  if (lastSentence > SUMMARY_LIMIT * 0.3) {
+    summary = summary.substring(0, lastSentence + 1).trimEnd()
+  }
+  return summary + '\n\n---\n*Response truncated. Full output (' + fullText.length.toLocaleString() + ' chars) available in the Session tab.*'
+}
+
+async function buildCompletionComment(fullText: string, taskTitle: string): Promise<string> {
+  const aiSummary = await summarizeWithAI(fullText, taskTitle)
+  if (aiSummary) {
+    return aiSummary + '\n\n---\n*AI-generated summary. Full output (' + fullText.length.toLocaleString() + ' chars) available in the Session tab.*'
+  }
+  return buildFallbackComment(fullText)
+}
+
 /** Sync task to GitHub/GNAP and broadcast escalation if task failed */
 function syncAndEscalateIfFailed(task: { id: number; title: string; status: string; priority: string; project_id?: number | null; workspace_id: number; description?: string | null }, newStatus: string, errorMsg?: string, dispatchAttempts?: number): void {
   syncTaskOutbound({ ...task, status: newStatus }, task.workspace_id)
@@ -37,10 +107,27 @@ interface DispatchableTask {
   agent_name: string
   agent_id: number
   agent_config: string | null
+  runtime_type: string | null
   ticket_prefix: string | null
   project_ticket_no: number | null
   project_id: number | null
   tags?: string[]
+}
+
+function runtimeTypeToSessionKind(runtimeType: string | null | undefined): string {
+  switch (runtimeType) {
+    case 'claude':
+    case 'openclaw':
+      return 'claude-code'
+    case 'codex':
+      return 'codex-cli'
+    case 'hermes':
+      return 'hermes'
+    case 'opencode':
+      return 'opencode'
+    default:
+      return 'claude-code'
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +467,7 @@ export async function reconcileDeferredTaskCompletions(options: {
     const truncated = resolution.length > 10_000
       ? resolution.substring(0, 10_000) + '\n\n[Response truncated at 10,000 characters]'
       : resolution
+    const commentContent = await buildCompletionComment(resolution, task.title)
     const nextMetadata: Record<string, any> = {
       ...metadata,
       async_state: 'completed',
@@ -403,7 +491,7 @@ export async function reconcileDeferredTaskCompletions(options: {
     db.prepare(`
       INSERT INTO comments (task_id, author, content, created_at, workspace_id)
       VALUES (?, ?, ?, ?, ?)
-    `).run(task.id, task.assigned_to || 'agent', truncated, now, task.workspace_id)
+    `).run(task.id, task.assigned_to || 'agent', commentContent, now, task.workspace_id)
 
     eventBus.broadcast('task.status_changed', {
       id: task.id,
@@ -953,6 +1041,16 @@ export async function runAegisReviews(): Promise<{ ok: boolean; message: string 
       previous_status: 'review',
     })
 
+    db_helpers.logActivity(
+      'task_quality_review_started',
+      'task',
+      task.id,
+      'aegis',
+      `Aegis reviewing task "${task.title}"`,
+      { assigned_to: task.assigned_to },
+      task.workspace_id
+    )
+
     try {
       const prompt = buildReviewPrompt(task)
       let agentResponse: AgentResponseParsed
@@ -965,7 +1063,8 @@ export async function runAegisReviews(): Promise<{ ok: boolean; message: string 
           id: task.id, title: task.title, description: task.description,
           status: 'quality_review', priority: 'high', assigned_to: 'aegis',
           workspace_id: task.workspace_id, agent_name: 'aegis', agent_id: 0,
-          agent_config: task.agent_config, ticket_prefix: task.ticket_prefix,
+          agent_config: task.agent_config, runtime_type: null,
+          ticket_prefix: task.ticket_prefix,
           project_ticket_no: task.project_ticket_no, project_id: null,
         }
         agentResponse = await callDirectly(reviewTask, prompt)
@@ -1012,6 +1111,16 @@ export async function runAegisReviews(): Promise<{ ok: boolean; message: string 
           previous_status: 'quality_review',
         })
         syncAndEscalateIfFailed(task, 'done')
+
+        db_helpers.logActivity(
+          'task_completed',
+          'task',
+          task.id,
+          'aegis',
+          `Task "${task.title}" approved and marked done`,
+          { verdict: 'approved', reviewed_by: 'aegis' },
+          task.workspace_id
+        )
       } else {
         // Rejected: check dispatch_attempts to decide next status
         const now = Math.floor(Date.now() / 1000)
@@ -1032,6 +1141,16 @@ export async function runAegisReviews(): Promise<{ ok: boolean; message: string 
             reason: 'max_aegis_retries_exceeded',
           })
           syncAndEscalateIfFailed(task, 'failed', `Aegis rejected ${newAttempts} times`, newAttempts)
+
+          db_helpers.logActivity(
+            'task_failed',
+            'task',
+            task.id,
+            'aegis',
+            `Task "${task.title}" failed after ${newAttempts} Aegis rejections`,
+            { attempts: newAttempts, reason: 'max_aegis_retries' },
+            task.workspace_id
+          )
         } else {
           // Requeue to assigned for re-dispatch with feedback
           db.prepare('UPDATE tasks SET status = ?, error_message = ?, dispatch_attempts = ?, updated_at = ? WHERE id = ?')
@@ -1045,6 +1164,16 @@ export async function runAegisReviews(): Promise<{ ok: boolean; message: string 
             reason: 'aegis_rejection',
           })
           syncAndEscalateIfFailed(task, 'assigned')
+
+          db_helpers.logActivity(
+            'task_rejected_retry',
+            'task',
+            task.id,
+            'aegis',
+            `Aegis rejected task "${task.title}" (attempt ${newAttempts}/${maxAegisRetries}) — requeued`,
+            { attempts: newAttempts, max: maxAegisRetries, reason: verdict.notes.substring(0, 200) },
+            task.workspace_id
+          )
         }
 
         // Add rejection as a comment so the agent sees it on next dispatch
@@ -1189,7 +1318,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
 
   const tasks = db.prepare(`
     SELECT t.*, a.name as agent_name, a.id as agent_id, a.config as agent_config,
-           p.ticket_prefix, t.project_ticket_no
+           a.runtime_type, p.ticket_prefix, t.project_ticket_no
     FROM tasks t
     JOIN agents a ON a.name = t.assigned_to AND a.workspace_id = t.workspace_id
     LEFT JOIN projects p ON p.id = t.project_id AND p.workspace_id = t.workspace_id
@@ -1293,6 +1422,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
           ...taskMeta,
           target_session: targetSession,
           dispatch_session_id: targetSession,
+          dispatch_session_kind: 'gateway',
           ...(dispatchRunId ? { dispatch_run_id: dispatchRunId } : {
             async_reconciliation: 'manual_required',
             async_warning: 'chat.send accepted without a runId; automatic completion reconciliation cannot safely wait on this session.',
@@ -1362,6 +1492,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
         const pendingMeta: Record<string, any> = {
           ...taskMeta,
           dispatch_session_id: dispatchSessionId,
+          dispatch_session_kind: 'gateway',
           ...(dispatchRunId ? { dispatch_run_id: dispatchRunId } : {
             async_reconciliation: 'manual_required',
             async_warning: 'agent dispatch accepted without a runId; automatic completion reconciliation cannot safely wait on this run.',
@@ -1404,6 +1535,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
       const truncated = agentResponse.text.length > 10_000
         ? agentResponse.text.substring(0, 10_000) + '\n\n[Response truncated at 10,000 characters]'
         : agentResponse.text
+      const commentContent = await buildCompletionComment(agentResponse.text, task.title)
 
       // Merge dispatch_session_id into existing metadata
       const existingMeta = (() => {
@@ -1415,6 +1547,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
       if (agentResponse.sessionId) {
         existingMeta.dispatch_session_id = agentResponse.sessionId
       }
+      existingMeta.dispatch_session_kind = runtimeTypeToSessionKind(task.runtime_type)
 
       // Update task: status → review, set outcome
       db.prepare(`
@@ -1428,7 +1561,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
       `).run(
         task.id,
         task.agent_name,
-        truncated,
+        commentContent,
         Math.floor(Date.now() / 1000),
         task.workspace_id
       )
