@@ -21,6 +21,7 @@ interface Agent {
   last_activity?: string
   created_at: number
   updated_at: number
+  runtime_type?: string | null
   taskStats?: {
     total: number
     assigned: number
@@ -241,6 +242,37 @@ export function OverviewTab({
               ) : (
                 <span className="text-foreground font-mono text-xs">
                   {agent.session_key || <span className="text-muted-foreground/50">{t('notSet')}</span>}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-center text-sm">
+              <span className="text-muted-foreground">Runtime</span>
+              {editing ? (
+                <select
+                  value={formData.runtime_type || ''}
+                  onChange={(e) => setFormData((prev: any) => ({ ...prev, runtime_type: e.target.value }))}
+                  className="bg-surface-1 text-foreground border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <option value="">Auto-detect</option>
+                  <option value="openclaw">OpenClaw Gateway</option>
+                  <option value="claude">Claude Code</option>
+                  <option value="codex">Codex CLI</option>
+                  <option value="hermes">Hermes</option>
+                  <option value="opencode">OpenCode</option>
+                  <option value="custom">Custom</option>
+                </select>
+              ) : (
+                <span className="text-foreground text-xs">
+                  {agent.runtime_type
+                    ? agent.runtime_type === 'openclaw' ? 'OpenClaw Gateway'
+                      : agent.runtime_type === 'claude' ? 'Claude Code'
+                        : agent.runtime_type === 'codex' ? 'Codex CLI'
+                          : agent.runtime_type === 'hermes' ? 'Hermes'
+                            : agent.runtime_type === 'opencode' ? 'OpenCode'
+                              : agent.runtime_type === 'custom' ? 'Custom'
+                                : agent.runtime_type
+                    : <span className="text-muted-foreground/50">{t('notSet')}</span>}
                 </span>
               )}
             </div>
@@ -727,7 +759,7 @@ export function ActivityTab({ agent }: { agent: Agent }) {
   useEffect(() => {
     const fetchActivities = async () => {
       try {
-        const response = await fetch(`/api/activities?actor=${agent.name}&limit=50`)
+        const response = await fetch(`/api/activities?for_agent=${encodeURIComponent(agent.name)}&limit=50`)
         if (response.ok) {
           const data = await response.json()
           setActivities(data.activities || [])
@@ -755,6 +787,15 @@ export function ActivityTab({ agent }: { agent: Agent }) {
       case 'agent_status_change': return '~'
       case 'task_created': return '+'
       case 'task_updated': return '>'
+      case 'task_dispatched': return '>'
+      case 'task_deferred_dispatch': return '>'
+      case 'task_agent_completed': return '✓'
+      case 'task_quality_review_started': return '?'
+      case 'task_completed': return '✓'
+      case 'task_failed': return '✗'
+      case 'task_rejected_retry': return '↻'
+      case 'aegis_review': return '?'
+      case 'task_auto_routed': return '>'
       case 'comment_added': return '#'
       case 'agent_heartbeat': return '*'
       case 'agent_soul_updated': return '@'
