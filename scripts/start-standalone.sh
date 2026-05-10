@@ -44,5 +44,5 @@ export MISSION_CONTROL_DATA_DIR="${MISSION_CONTROL_DATA_DIR:-$PROJECT_ROOT/.data
 
 # Next.js standalone server reads HOSTNAME to decide bind address.
 # Default to 0.0.0.0 so the server is accessible from outside the host.
-export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+export HOSTNAME="${MC_HOSTNAME:-0.0.0.0}"
 exec node server.js
