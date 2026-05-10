@@ -40,9 +40,10 @@ async function handleActivitiesRequest(request: NextRequest, workspaceId: number
     const type = searchParams.get('type');
     const actor = searchParams.get('actor');
     const entity_type = searchParams.get('entity_type');
+    const for_agent = searchParams.get('for_agent');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 500);
     const offset = parseInt(searchParams.get('offset') || '0');
-    const since = searchParams.get('since'); // Unix timestamp for real-time updates
+    const since = searchParams.get('since');
     
     // Build dynamic query
     let query = 'SELECT * FROM activities WHERE workspace_id = ?';
@@ -59,7 +60,18 @@ async function handleActivitiesRequest(request: NextRequest, workspaceId: number
       }
     }
     
-    if (actor) {
+    if (for_agent) {
+      query += ` AND (
+        actor = ?
+        OR (entity_type = 'task' AND entity_id IN (SELECT id FROM tasks WHERE assigned_to = ? AND workspace_id = ?))
+        OR (entity_type = 'comment' AND entity_id IN (
+          SELECT c.id FROM comments c
+          INNER JOIN tasks t ON c.task_id = t.id
+          WHERE t.assigned_to = ? AND c.workspace_id = ? AND t.workspace_id = ?
+        ))
+      )`;
+      params.push(for_agent, for_agent, workspaceId, for_agent, workspaceId, workspaceId);
+    } else if (actor) {
       query += ' AND actor = ?';
       params.push(actor);
     }
@@ -148,7 +160,18 @@ async function handleActivitiesRequest(request: NextRequest, workspaceId: number
       }
     }
     
-    if (actor) {
+    if (for_agent) {
+      countQuery += ` AND (
+        actor = ?
+        OR (entity_type = 'task' AND entity_id IN (SELECT id FROM tasks WHERE assigned_to = ? AND workspace_id = ?))
+        OR (entity_type = 'comment' AND entity_id IN (
+          SELECT c.id FROM comments c
+          INNER JOIN tasks t ON c.task_id = t.id
+          WHERE t.assigned_to = ? AND c.workspace_id = ? AND t.workspace_id = ?
+        ))
+      )`;
+      countParams.push(for_agent, for_agent, workspaceId, for_agent, workspaceId, workspaceId);
+    } else if (actor) {
       countQuery += ' AND actor = ?';
       countParams.push(actor);
     }
