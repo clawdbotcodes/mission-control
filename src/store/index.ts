@@ -146,6 +146,7 @@ export interface Agent {
   updated_at: number
   hidden?: number
   config?: JsonValue
+  runtime_type?: string | null
   taskStats?: {
     total: number
     assigned: number

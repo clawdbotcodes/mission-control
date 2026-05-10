@@ -264,13 +264,13 @@ export async function syncAgentsFromConfig(actor: string = 'system'): Promise<Sy
   let updated = 0
   const results: SyncResult['agents'] = []
 
-  const findByName = db.prepare('SELECT id, name, role, config, soul_content, avatar_url FROM agents WHERE name = ?')
+  const findByName = db.prepare('SELECT id, name, role, config, soul_content, avatar_url, runtime_type FROM agents WHERE name = ?')
   const insertAgent = db.prepare(`
-    INSERT INTO agents (name, role, soul_content, avatar_url, status, created_at, updated_at, config)
-    VALUES (?, ?, ?, ?, 'offline', ?, ?, ?)
+    INSERT INTO agents (name, role, soul_content, avatar_url, status, created_at, updated_at, config, runtime_type)
+    VALUES (?, ?, ?, ?, 'offline', ?, ?, ?, 'openclaw')
   `)
   const updateAgent = db.prepare(`
-    UPDATE agents SET role = ?, config = ?, soul_content = ?, avatar_url = ?, updated_at = ? WHERE name = ?
+    UPDATE agents SET role = ?, config = ?, soul_content = ?, avatar_url = ?, updated_at = ?, runtime_type = COALESCE(runtime_type, 'openclaw') WHERE name = ?
   `)
 
   db.transaction(() => {

@@ -214,6 +214,8 @@ export interface Task {
   metadata?: string; // JSON string
 }
 
+export type AgentRuntimeType = 'hermes' | 'openclaw' | 'claude' | 'codex' | 'opencode' | 'custom' | null
+
 export interface Agent {
   id: number;
   name: string;
@@ -227,6 +229,7 @@ export interface Agent {
   updated_at: number;
   config?: string;
   avatar_url?: string | null;
+  runtime_type?: AgentRuntimeType;
 }
 
 export interface Comment {

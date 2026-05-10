@@ -67,7 +67,7 @@ export async function PUT(
     const { id } = await params
     const workspaceId = auth.user.workspace_id ?? 1;
     const body = await request.json()
-    const { role, gateway_config, write_to_gateway } = body
+    const { role, gateway_config, write_to_gateway, runtime_type } = body
 
     let agent
     if (isNaN(Number(id))) {
@@ -128,6 +128,11 @@ export async function PUT(
       if (role !== undefined) {
         fields.push('role = ?')
         values.push(role)
+      }
+
+      if (runtime_type !== undefined) {
+        fields.push('runtime_type = ?')
+        values.push(runtime_type || null)
       }
 
       if (gateway_config) {
@@ -201,7 +206,7 @@ export async function PUT(
 
     return NextResponse.json({
       success: true,
-      agent: { ...agent, config: enrichedConfig, role: role || agent.role, updated_at: now },
+      agent: { ...agent, config: enrichedConfig, role: role || agent.role, runtime_type: runtime_type !== undefined ? (runtime_type || null) : agent.runtime_type, updated_at: now },
     })
   } catch (error: any) {
     logger.error({ err: error }, 'PUT /api/agents/[id] error')

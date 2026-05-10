@@ -387,7 +387,7 @@ export async function PUT(request: NextRequest) {
     // Handle single agent update or bulk updates
     if (body.name) {
       // Single agent update
-      const { name, status, last_activity, config, session_key, soul_content, role } = body;
+      const { name, status, last_activity, config, session_key, soul_content, role, runtime_type } = body;
       
       const agent = db
         .prepare('SELECT * FROM agents WHERE name = ? AND workspace_id = ?')
@@ -433,6 +433,11 @@ export async function PUT(request: NextRequest) {
       if (role !== undefined) {
         fieldsToUpdate.push('role = ?');
         params.push(role);
+      }
+      
+      if (runtime_type !== undefined) {
+        fieldsToUpdate.push('runtime_type = ?');
+        params.push(runtime_type || null);
       }
       
       fieldsToUpdate.push('updated_at = ?');
